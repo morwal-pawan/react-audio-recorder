@@ -1,4 +1,4 @@
-import encodeWAV from './waveEncoder';
+import encodeWAV from "./waveEncoder";
 
 export default class WAVEInterface {
   static audioContext = new AudioContext();
@@ -10,42 +10,63 @@ export default class WAVEInterface {
   buffers: Float32Array[][]; // one buffer for each channel L,R
   encodingCache?: Blob;
 
-  get bufferLength() { return this.buffers[0].length * WAVEInterface.bufferSize; }
-  get audioDuration() { return this.bufferLength / WAVEInterface.audioContext.sampleRate; }
+  get bufferLength() {
+    return this.buffers[0].length * WAVEInterface.bufferSize;
+  }
+  get audioDuration() {
+    return this.bufferLength / WAVEInterface.audioContext.sampleRate;
+  }
   get audioData() {
-    return this.encodingCache || encodeWAV(this.buffers, this.bufferLength, WAVEInterface.audioContext.sampleRate);
+    return (
+      this.encodingCache ||
+      encodeWAV(
+        this.buffers,
+        this.bufferLength,
+        WAVEInterface.audioContext.sampleRate
+      )
+    );
   }
 
   startRecording() {
     return new Promise((resolve, reject) => {
-	  var n = <any>navigator;
-    n.getUserMedia  = n.getUserMedia || n.webkitGetUserMedia || n.mozGetUserMedia || n.msGetUserMedia;
-      n.getUserMedia({ audio: true }, (stream) => {
-        const { audioContext } = WAVEInterface;
-        const recGainNode = audioContext.createGain();
-        const recSourceNode = audioContext.createMediaStreamSource(stream);
-        const recProcessingNode = audioContext.createScriptProcessor(WAVEInterface.bufferSize, 2, 2);
-        if (this.encodingCache) this.encodingCache = null;
-
-        recProcessingNode.onaudioprocess = (event) => {
+      var n = <any>navigator;
+      n.mediaDevices.getUserMedia({ audio: true }).then(
+        stream => {
+          const { audioContext } = WAVEInterface;
+          const recGainNode = audioContext.createGain();
+          const recSourceNode = audioContext.createMediaStreamSource(stream);
+          const recProcessingNode = audioContext.createScriptProcessor(
+            WAVEInterface.bufferSize,
+            2,
+            2
+          );
           if (this.encodingCache) this.encodingCache = null;
-          // save left and right buffers
-          for (let i = 0; i < 2; i++) {
-            const channel = event.inputBuffer.getChannelData(i);
-            this.buffers[i].push(new Float32Array(channel));
-          }
-        };
 
-        recSourceNode.connect(recGainNode);
-        recGainNode.connect(recProcessingNode);
-        recProcessingNode.connect(audioContext.destination);
+          recProcessingNode.onaudioprocess = event => {
+            if (this.encodingCache) this.encodingCache = null;
+            // save left and right buffers
+            for (let i = 0; i < 2; i++) {
+              const channel = event.inputBuffer.getChannelData(i);
+              this.buffers[i].push(new Float32Array(channel));
+            }
+          };
 
-        this.recordingStream = stream;
-        this.recordingNodes.push(recSourceNode, recGainNode, recProcessingNode);
-        resolve(stream);
-      }, (err) => {
-        reject(err);
-      });
+          recSourceNode.connect(recGainNode);
+          recGainNode.connect(recProcessingNode);
+          recProcessingNode.connect(audioContext.destination);
+
+          this.recordingStream = stream;
+          this.recordingNodes.push(
+            recSourceNode,
+            recGainNode,
+            recProcessingNode
+          );
+          resolve(stream);
+        },
+        err => {
+          reject(err);
+        }
+      );
     });
   }
 
@@ -65,7 +86,7 @@ export default class WAVEInterface {
       const reader = new FileReader();
       reader.readAsArrayBuffer(this.audioData);
       reader.onloadend = () => {
-        WAVEInterface.audioContext.decodeAudioData(reader.result, (buffer) => {
+        WAVEInterface.audioContext.decodeAudioData(reader.result, buffer => {
           const source = WAVEInterface.audioContext.createBufferSource();
           source.buffer = buffer;
           source.connect(WAVEInterface.audioContext.destination);
